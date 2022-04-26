@@ -22,6 +22,7 @@ char *read_command(void);
 int key_up(int count, int key);
 int key_down(int count, int key);
 
+void ui_clear_prefix();
 char **command_completion(const char *text, int start, int end);
 char *command_generator(const char *text, int state);
 

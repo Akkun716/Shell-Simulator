@@ -2,13 +2,16 @@
 #include <readline/readline.h>
 #include <locale.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "history.h"
 #include "logger.h"
 #include "ui.h"
 
-static const char *good_str = "😌";
-static const char *bad_str  = "🤯";
+static const char *good_str = "✅";
+static const char *bad_str  = "❗";
+static int status = 0;
+static char *prefix = NULL;
 
 static int readline_init(void);
 
@@ -64,27 +67,35 @@ char *prompt_line(void)
 
 char *prompt_username(void)
 {
-    return "unknown_user";
+    static char user[_SC_LOGIN_NAME_MAX] = {0};
+    getlogin_r(user, _SC_LOGIN_NAME_MAX);
+    return user;
 }
 
 char *prompt_hostname(void)
 {
-    return "unknown_host";
+   static char name[_SC_HOST_NAME_MAX] = {0};
+   gethostname(name, _SC_HOST_NAME_MAX);
+   return name;
 }
 
 char *prompt_cwd(void)
 {
-    return "/unknown/path";
+   char *cwd = getcwd(NULL, 0);
+   return cwd;
 }
 
 int prompt_status(void)
 {
-    return -1;
+    return status;
 }
 
 unsigned int prompt_cmd_num(void)
 {
-    return 0;
+    int cmd_num = hist_last_cnum();
+    return cmd_num != -1
+        ? cmd_num + 1
+        : 1;
 }
 
 char *read_command(void)
@@ -107,32 +118,104 @@ int readline_init(void)
 
 int key_up(int count, int key)
 {
-    /* Modify the command entry text: */
-    rl_replace_line("User pressed 'up' key", 1);
+    char *output_str = NULL;
+    
+    /* If text was entered and there was no prefix stored
+     * OR
+     * If a prefix is stored and its length is different than
+     * user entered command */
+    
+    char *track_val = hist_track_val();
+    if(track_val == NULL) {
+        track_val = "";
+    }
+
+    if(rl_mark != rl_point && strcmp(rl_line_buffer, track_val) != 0) {
+        prefix = strdup(rl_line_buffer);
+        LOG("prefix updated to: %s\n", prefix);
+    } else {
+        //LOG("prefix was NOT updated %s\n", "");
+    }
+    
+
+    if(prefix != NULL) {
+        //LOG("Prefix search was executed!%s\n", "");
+        output_str = hist_search_prefix(prefix, 0);
+        if(output_str == NULL) {
+            output_str = prefix;
+        }
+    } else {
+        if(hist_track_cnum() == -1) {
+            /* If first upkey press && line is blank*/
+            output_str = hist_search_cnum(hist_last_cnum()); 
+        } else if(hist_track_cnum() == hist_oldest_cnum()) {
+            /* If the last up press returned the oldest hist item */
+            output_str = hist_search_cnum(hist_oldest_cnum()); 
+        } else {
+            output_str = hist_track_prev_val();
+        }
+    }
+
+    if(output_str == NULL) {
+        output_str = "";
+    }
+
+    rl_replace_line(output_str, 1);
 
     /* Move the cursor to the end of the line: */
     rl_point = rl_end;
-
-    // TODO: step back through the history until no more history entries are
-    // left. Once the end of the history is reached, stop updating the command
-    // line.
+    //rl_mark = rl_end;
 
     return 0;
 }
 
 int key_down(int count, int key)
 {
+    char *output_str = NULL;
     /* Modify the command entry text: */
-    rl_replace_line("User pressed 'down' key", 1);
 
+    char *track_val = hist_track_val();
+    if(track_val == NULL) {
+        track_val = "";
+    }
+
+    if(rl_mark != rl_point && strcmp(rl_line_buffer, track_val) != 0) {
+        prefix = strdup(rl_line_buffer);
+        //LOG("prefix updated to: %s\n", prefix);
+    } else {
+        //LOG("prefix was NOT updated %s\n", "");
+    }
+    
+
+    if(prefix != NULL) {
+        //LOG("Prefix search was executed!%s\n", "");
+        output_str = hist_search_prefix(prefix, 1);
+        if(output_str == NULL) {
+            output_str = prefix;
+        }
+    } else {
+        output_str = hist_track_next_val();
+    }
+
+    if(output_str == NULL) {
+        output_str = "";
+    }
+
+    rl_replace_line(output_str, 1);
     /* Move the cursor to the end of the line: */
     rl_point = rl_end;
+    //rl_mark = rl_end;
 
     // TODO: step forward through the history (assuming we have stepped back
     // previously). Going past the most recent history command blanks out the
     // command line to allow the user to type a new command.
 
     return 0;
+}
+
+void ui_clear_prefix() {
+    free(prefix);
+    prefix = NULL;
 }
 
 char **command_completion(const char *text, int start, int end)
