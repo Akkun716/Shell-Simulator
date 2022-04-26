@@ -1,5 +1,5 @@
 # Output binary name
-bin=crash
+bin=fish
 lib=libshell.so
 
 # Set the following to '0' to disable log messages:
@@ -11,7 +11,7 @@ LDLIBS += -lm -lreadline
 LDFLAGS += -L. -Wl,-rpath='$$ORIGIN'
 
 # Source C files
-src=history.c shell.c ui.c
+src=history.c shell.c ui.c util.c
 obj=$(src:.c=.o)
 
 all: $(bin) $(lib)
@@ -22,9 +22,9 @@ $(bin): $(obj)
 $(lib): $(obj)
 	$(CC) $(CFLAGS) $(LDLIBS) $(LDFLAGS) $(obj) -shared -o $@
 
-shell.o: shell.c history.h logger.h ui.h
-history.o: history.c history.h logger.h
-ui.o: ui.h ui.c logger.h history.h
+shell.o: shell.c history.h logger.h ui.h util.c util.h
+history.o: history.c history.h logger.h util.c util.h
+ui.o: ui.h ui.c logger.h history.h util.c util.h
 
 clean:
 	rm -f $(bin) $(obj) $(lib) vgcore.*
