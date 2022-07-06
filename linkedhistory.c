@@ -1,4 +1,5 @@
 #include "linkedhistory.h"
+#include "logger.h"
 
 void set_node(node_ptr target, node_ptr placed, bool set_before)
 {
@@ -29,7 +30,6 @@ node_ptr get_node(struct LinkedHistory *list, int position)
         return NULL;
     } else if(position < 0 || (list->list_sz != 0 && position >= list->list_sz)) {
         /* The position entered is invalid */
-        printf("Position out of bounds\n");
         perror("Position input out of bounds");
         return NULL;
     }
@@ -43,7 +43,7 @@ node_ptr get_node(struct LinkedHistory *list, int position)
         list->track = list->tail;
         for(int i = list->list_sz - 1; i > mid; i--) {
             if(i == position) {
-                return list->track;
+                break;
             } else {
                 list->track = list->track->prev;
             }
@@ -54,12 +54,14 @@ node_ptr get_node(struct LinkedHistory *list, int position)
         list->track = list->head;
         for(int i = 0; i <= mid; i++) {
             if(i == position) {
-                return list->track; 
+                break; 
             } else {
                 list->track = list->track->next;
             }
         }    
     }
+
+    return list->track;
 }
 
 void del_head(struct LinkedHistory *list)
@@ -74,7 +76,7 @@ void del_head(struct LinkedHistory *list)
         /* History is empty, so also set tail to NULL */
         list->tail = NULL;
     }
-   
+
     free(del_node->val);
     free(del_node);
 
@@ -101,7 +103,7 @@ void del_tail(struct LinkedHistory *list)
 }
 
 
-void append_node(const char *str, struct LinkedHistory *list)
+void append_node(struct LinkedHistory *list, const char *str, uint32_t id, bool reduce_size)
 {
     node_ptr new_node = (node_ptr) malloc(sizeof(struct Node));
 
@@ -112,7 +114,11 @@ void append_node(const char *str, struct LinkedHistory *list)
     } else {
         new_node->val = strdup(str);
         list->total_id_count += 1;
-        new_node->id = list->total_id_count;
+        if(id != -1) {
+            new_node->id = id;
+        } else {
+            new_node->id = list->total_id_count;
+        }
 
         if(list->list_sz == 0) {
             /* Position is at head */
@@ -128,10 +134,52 @@ void append_node(const char *str, struct LinkedHistory *list)
         }
         
         if(list->list_sz < list->list_max) {
+            LOG("List size increased!%s\n", "");
             list->list_sz += 1;
         } else {
-            del_head(list);
+            LOG("List max reached! Deleting oldest history entry %d...\n", list->head->id);
+            if(reduce_size) {
+                remove_node(list, 0);
+                list->list_sz += 1;
+            } else {
+                del_head(list);
+            }
         }
+    }
+
+    return;
+}
+
+void remove_node(struct LinkedHistory *list, int position) {
+    node_ptr del_node = get_node(list, position);
+
+    if(del_node != NULL) {
+        if(del_node->prev != NULL) {
+            del_node->prev->next = del_node->next;
+        }
+        if(del_node->next != NULL) {
+            del_node->next->prev = del_node->prev;
+        }
+
+        if(list->tail == del_node) {
+            list->tail = del_node->prev;
+        }
+        if(list->head == del_node) {
+            list->head = del_node->next; 
+        }
+
+        list->total_id_count -= 1;
+        list->list_sz -= 1;
+
+        node_ptr temp_node = del_node->next;
+        while(temp_node != NULL) {
+            temp_node->id -= 1;
+            temp_node = temp_node->next;
+        }
+
+        free(del_node->val);
+        free(del_node);
+        LOG("Node found and removed! Current id total and list size is %d and %d\n", list->total_id_count, list->list_sz);
     }
 
     return;
