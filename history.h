@@ -10,6 +10,7 @@
 void hist_init(unsigned int);
 void hist_destroy(void);
 void hist_add(const char *);
+void hist_remove(int command_number);
 void hist_print(void);
 const char *hist_search_prefix(char *, int);
 const char *hist_search_cnum(int);

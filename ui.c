@@ -1,6 +1,8 @@
 #include <stdio.h>
+#include <signal.h>
 #include <readline/readline.h>
 #include <locale.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -9,9 +11,15 @@
 #include "ui.h"
 
 static const char *good_str = "✅";
-static const char *bad_str  = "❗";
+static const char *bad_str  = "🔥";
 static int status = 0;
 static char *prefix = NULL;
+char *home = NULL;
+int home_size = 0;
+int delim_offset = 0;
+char **path_complete = NULL;
+int path_dir_ind = 0;
+int dir_ind = 0;
 
 static int readline_init(void);
 
@@ -28,7 +36,13 @@ void init_ui(void)
 
 void destroy_ui(void)
 {
-    // TODO cleanup code, if necessary
+    if(path_complete != NULL) {
+        free(path_complete);
+        path_complete = NULL;
+    }
+    if(prefix != NULL) {
+        ui_clear_prefix();
+    }
 }
 
 char *prompt_line(void)
@@ -62,32 +76,68 @@ char *prompt_line(void)
             host,
             cwd);
 
+    free(cwd);
+    free(host);
     return prompt_str;
 }
 
 char *prompt_username(void)
 {
-    static char user[_SC_LOGIN_NAME_MAX] = {0};
-    getlogin_r(user, _SC_LOGIN_NAME_MAX);
-    return user;
+    return getenv("USER");
 }
 
 char *prompt_hostname(void)
 {
-   static char name[_SC_HOST_NAME_MAX] = {0};
-   gethostname(name, _SC_HOST_NAME_MAX);
-   return name;
+    char *name = malloc(HOST_NAME_MAX * sizeof(char));
+    gethostname(name, HOST_NAME_MAX);
+    return name;
 }
 
 char *prompt_cwd(void)
 {
-   char *cwd = getcwd(NULL, 0);
-   return cwd;
+    char *cwd = getcwd(NULL, 0);
+
+    if(home_size == 0) {
+        home = getenv("HOME");
+        home_size = strlen(home);
+    }
+
+    if(strncmp(home, cwd, home_size) == 0) {
+        int new_size = strlen(cwd) - home_size;
+        if(new_size == 0) {
+            //char new_cwd[2];
+            char *new_cwd = malloc(2 * sizeof(char));
+            new_cwd[0] = '~';
+            new_cwd[1] = '\0';
+            return new_cwd;
+        } else {
+            //char new_cwd[new_size + 2];
+            char *new_cwd = malloc((new_size + 2) * sizeof(char));
+            new_cwd[0] = '~';
+            int new_ind = 1;
+            for(int i = home_size; i < strlen(cwd); i++) {
+                new_cwd[new_ind++] = cwd[i];
+            }
+            new_cwd[new_size + 1] = '\0';
+            return new_cwd;
+        }
+    }
+    return cwd;
 }
 
 int prompt_status(void)
 {
     return status;
+}
+
+void good_status(void)
+{
+    status = 0;
+}
+
+void bad_status(void)
+{
+    status = -1;
 }
 
 unsigned int prompt_cmd_num(void)
@@ -96,14 +146,32 @@ unsigned int prompt_cmd_num(void)
     return cmd_num != -1
         ? cmd_num + 1
         : 1;
+    return 1;
 }
+
+/*int sig_handler(int signo)
+{
+    switch(signo) {
+        case SIGINT:
+            printf("\n");
+            fflush(stdout);
+    }
+
+    return 0;
+}*/
 
 char *read_command(void)
 {
-    char *prompt = prompt_line();
-    char *command = readline(prompt);
+    char *prompt = NULL;
+    char *command = NULL;
+    //int interrupt = signal(SIGINT, sig_handler);
+
+    prompt = prompt_line();
+    command = readline(prompt);
     free(prompt);
-    return command;
+    return command == NULL
+        ? ""
+        : command;
 }
 
 int readline_init(void)
@@ -113,36 +181,51 @@ int readline_init(void)
     rl_variable_bind("show-all-if-ambiguous", "on");
     rl_variable_bind("colored-completion-prefix", "on");
     rl_attempted_completion_function = command_completion;
+    rl_getc_function = getc;
     return 0;
 }
 
 int key_up(int count, int key)
 {
     char *output_str = NULL;
-    
-    /* If text was entered and there was no prefix stored
-     * OR
-     * If a prefix is stored and its length is different than
-     * user entered command */
-    
+
+    //LOG("Current value of val is %s\n", hist_track_val());
     char *track_val = hist_track_val();
     if(track_val == NULL) {
         track_val = "";
     }
 
-    if(rl_mark != rl_point && strcmp(rl_line_buffer, track_val) != 0) {
-        prefix = strdup(rl_line_buffer);
-        LOG("prefix updated to: %s\n", prefix);
+    /* If text was entered and there was no prefix stored
+     * OR
+     * If a prefix is stored and its length is different than
+     * user entered command
+     *
+     * This verifies the user changed the entry in history */
+
+    if (strcmp(rl_line_buffer, "") == 0) {
+        ui_clear_prefix();
+    } else if(strcmp(rl_line_buffer, track_val) != 0) {
+        if(prefix == NULL || strncmp(prefix, rl_line_buffer, strlen(prefix)) != 0) {
+            prefix = strdup(rl_line_buffer);
+            hist_track_clear();
+            LOG("prefix updated to: %s\n", prefix);
+        }
     } else {
         //LOG("prefix was NOT updated %s\n", "");
     }
     
 
     if(prefix != NULL) {
+        /* Checks if there is a valid prefix */
         //LOG("Prefix search was executed!%s\n", "");
         output_str = hist_search_prefix(prefix, 0);
+        
+        /*while(output_str != NULL && strcmp(output_str, rl_line_buffer) == 0) {
+            output_str = hist_search_prefix(prefix, 0);
+        }*/
+        
         if(output_str == NULL) {
-            output_str = prefix;
+            output_str = rl_line_buffer;
         }
     } else {
         if(hist_track_cnum() == -1) {
@@ -174,14 +257,19 @@ int key_down(int count, int key)
     char *output_str = NULL;
     /* Modify the command entry text: */
 
+    //LOG("Current value of val is %s\n", hist_track_val());
     char *track_val = hist_track_val();
     if(track_val == NULL) {
         track_val = "";
     }
 
-    if(rl_mark != rl_point && strcmp(rl_line_buffer, track_val) != 0) {
-        prefix = strdup(rl_line_buffer);
-        //LOG("prefix updated to: %s\n", prefix);
+    if (strcmp(rl_line_buffer, "") == 0) {
+        ui_clear_prefix();
+    } else if(strcmp(rl_line_buffer, track_val) != 0) {
+        if(prefix == NULL || strncmp(prefix, rl_line_buffer, strlen(prefix)) != 0) {
+            prefix = strdup(rl_line_buffer);
+            LOG("prefix updated to: %s\n", prefix);
+        }
     } else {
         //LOG("prefix was NOT updated %s\n", "");
     }
@@ -190,8 +278,8 @@ int key_down(int count, int key)
     if(prefix != NULL) {
         //LOG("Prefix search was executed!%s\n", "");
         output_str = hist_search_prefix(prefix, 1);
-        if(output_str == NULL) {
-            output_str = prefix;
+        while(output_str != NULL && strcmp(output_str, rl_line_buffer) == 0) {
+            output_str = hist_search_prefix(prefix, 1);
         }
     } else {
         output_str = hist_track_next_val();
@@ -205,15 +293,11 @@ int key_down(int count, int key)
     /* Move the cursor to the end of the line: */
     rl_point = rl_end;
     //rl_mark = rl_end;
-
-    // TODO: step forward through the history (assuming we have stepped back
-    // previously). Going past the most recent history command blanks out the
-    // command line to allow the user to type a new command.
-
     return 0;
 }
 
-void ui_clear_prefix() {
+void ui_clear_prefix()
+{
     free(prefix);
     prefix = NULL;
 }
