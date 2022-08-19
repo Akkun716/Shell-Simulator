@@ -5,21 +5,26 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <unistd.h>
+//UNSURE IF THIS CAN BE INCLUDED, BUT REQUIRED DIRECTORY ACCESS
+#include <dirent.h>
 
 #include "history.h"
 #include "logger.h"
 #include "ui.h"
+#include "util.h"
+
+#define PATH_DELIM ":"
 
 static const char *good_str = "✅";
 static const char *bad_str  = "🔥";
 static int status = 0;
 static char *prefix = NULL;
-char *home = NULL;
-int home_size = 0;
-int delim_offset = 0;
-char **path_complete = NULL;
-int path_dir_ind = 0;
-int dir_ind = 0;
+static char *home = NULL;
+static int home_size = 0;
+static int delim_offset = 0;
+static char **path_complete = NULL;
+static int path_size = 0;
+static int path_ind = 0;
 
 static int readline_init(void);
 
@@ -47,7 +52,7 @@ void destroy_ui(void)
 
 char *prompt_line(void)
 {
-    const char *status = prompt_status() ? bad_str : good_str;
+    const char *status_val = prompt_status() ? bad_str : good_str;
 
     char cmd_num[25];
     snprintf(cmd_num, 25, "%d", prompt_cmd_num());
@@ -60,7 +65,7 @@ char *prompt_line(void)
 
     size_t prompt_sz
         = strlen(format_str)
-        + strlen(status)
+        + strlen(status_val)
         + strlen(cmd_num)
         + strlen(user)
         + strlen(host)
@@ -70,7 +75,7 @@ char *prompt_line(void)
     char *prompt_str =  malloc(sizeof(char) * prompt_sz);
 
     snprintf(prompt_str, prompt_sz, format_str,
-            status,
+            status_val,
             cmd_num,
             user,
             host,
@@ -311,6 +316,7 @@ char **command_completion(const char *text, int start, int end)
     return rl_completion_matches(text, command_generator);
 }
 
+
 /**
  * This function is called repeatedly by the readline library to build a list of
  * possible completions. It returns one match per function call. Once there are
@@ -323,6 +329,35 @@ char *command_generator(const char *text, int state)
     // this function is called. You will likely need to maintain static/global
     // variables to track where you are in the search so that you don't start
     // over from the beginning.
+    //if(state == 0) {
+    //    char *path = getenv("PATH");
+
+    //    if(path_complete != NULL) {
+    //        free(path_complete);
+    //        path_complete = NULL;
+    //    }
+
+    //    path_size = tok_str(path, &path_complete, PATH_DELIM, false);
+    //    LOG("I at least made it this far!%s\n", "");
+    //}
+
+    //for(int i = 0; i < path_size; i++) {
+    //    LOG("%s\n", path_complete[i]);
+    //}
+    //char *output = NULL;
+    //DIR *dir;
+    //struct dirent *direntry;
+    //for(int i = 0; i < path_size; i++) {
+    //    dir = opendir(path_complete[path_ind]);
+    //    while((direntry = readdir(dir)) != NULL) {
+    //        if(strcmp(text, direntry->d_name) == 0) {
+    //            path_ind = i;
+    //            closedir(direntry);
+    //            return direntry->d_name;
+    //        }
+    //    }
+    //    closedir(direntry);
+    //}
 
     return NULL;
 }
