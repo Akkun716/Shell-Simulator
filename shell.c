@@ -17,8 +17,15 @@
 
 /* Serves as the background jobs list */
 static struct LinkedHistory *bg_jobs = NULL;
+#define BG_LIMIT 10
+#define CMD_DELIM " \t\r\n"
+
 /* Used for the forking status var */
 static int status = 0;
+static int parchildfd[2];
+static int childparfd[2];
+//static int child_queue[BG_LIMIT] = {0};
+//static int queue_ind = -1;
 
 /**
  * Initializes the background list with a list max based on the passed limit
@@ -27,6 +34,7 @@ static int status = 0;
  */
 void bg_init(unsigned int limit)
 {
+    LOG("Initializing background jobs list%s\n", "");
     bg_jobs = (struct LinkedHistory *) malloc(sizeof(struct LinkedHistory));
     bg_jobs->list_max = limit;
     bg_jobs->list_sz = 0;
@@ -47,42 +55,6 @@ void bg_destroy(void)
     free(bg_jobs);
 }
 
-/**
- * Tokenizes the passed string
- *
- * @param command the command string to be tokenized
- * @param buf the string array to hold string tokens
- * @return the num of token elements in the array
- */
-int tok_cmd(char *command, char **buf[])
-{
-    char *cmd_iter = command;
-    char *curr_tok = NULL;
-    int arr_sz = 1;
-    int i = 0;
-
-    *buf = (char **) malloc(sizeof(char *));
-    while((curr_tok = next_token(&cmd_iter, " \t\r\n")) != NULL) {
-        if(strncmp("#", curr_tok, 1) == 0) {
-            break;
-        } else {
-            if(i == arr_sz) {
-                arr_sz *= 2;
-                *buf = (char **)realloc(*buf, arr_sz * sizeof(char *));
-            }
-            (*buf)[i] = curr_tok;
-            i++;
-        }
-    }
-    
-    /* If the array is completely filled, add space for NULL terminator */
-    if(i == arr_sz) {
-        arr_sz += 1;
-        *buf = (char **)realloc(*buf, arr_sz * sizeof(char *));
-    }
-    (*buf)[i] = NULL;
-    return i;
-}
 
 /* All builtin functions use the same arguments. Refer to builtin_handler() for arg explanations */
 
@@ -97,12 +69,27 @@ int exit_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *ol
  * Initializes the background list with a list max based on the passed limit
  */
 int cd_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *old_cmd) {
+    int output = 0;
     if(*buf != NULL) {
-        chdir(*buf[1]);
+        if(*buf[1] == NULL) {
+            output = chdir(getenv("HOME"));
+        } else {
+            output = chdir(*buf[1]);
+        }
     } else {
-        chdir(args[1]);
+        if(args[1] == NULL) {
+            output = chdir(getenv("HOME"));
+        } else {
+            output = chdir(args[1]);
+        }
     }
-    return 0;
+
+    if(output == -1) {
+        perror("chdir");
+    } else {
+    }
+
+    return output;
 } 
 
 /**
@@ -160,7 +147,7 @@ int bang_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *ol
         LOG("Bang cmd added to history! Bang command receive: %s\n", bang_cmd);
         *buf_cmd = strdup(bang_cmd);
         hist_add(*buf_cmd);
-        *argc = tok_cmd(*buf_cmd, buf);
+        *argc = tok_str(*buf_cmd, buf, CMD_DELIM, true);
     }
     LOG("Bang handler default finish!%s\n", "");
     return -1;
@@ -237,7 +224,12 @@ void sig_handler(int signo) {
             fflush(stdout);
             break;
         case SIGCHLD:
-            waitpid(-1, &status, WNOHANG);
+            //LOG("PID during signal handler is %d\n", getpid());
+            int id = -1;
+            if((id = waitpid(-1, &status, WNOHANG)) > 0) {
+                remove_node(bg_jobs, id, true);
+            }
+            LOG("The value from wait was %d\n", id);
             break;
     }
 }
@@ -246,8 +238,9 @@ void sig_handler(int signo) {
  * Attempts to execute the inputted command. First tokenizes, then 
  */
 int execute_cmd(char *command)
-{ 
+{
     ui_clear_prefix();
+    status = 0;
 
     if(strcmp(command, "") == 0) {
         return 0;
@@ -258,14 +251,15 @@ int execute_cmd(char *command)
     char **sel_args = NULL;
     char *old_cmd = NULL;
     char *buf_cmd = NULL;
+    char *full_cmd = strdup(command);
     int argc = 0;
 
     if(hist_oldest_cnum() != -1) {
         old_cmd = strdup(hist_search_cnum(hist_oldest_cnum()));
     }
     
-    hist_add(command);
-    argc = tok_cmd(command, &cmd_args);
+    hist_add(full_cmd);
+    argc = tok_str(command, &cmd_args, CMD_DELIM, true);
 
     if(builtin_handler(cmd_args, &argc, &buf_args, &buf_cmd, old_cmd) == 0) {
         LOG("Builtin handled!%s\n", "");
@@ -275,6 +269,7 @@ int execute_cmd(char *command)
         free(buf_args);
         free(buf_cmd);
         free(old_cmd);
+        free(full_cmd);
         return EXIT_SUCCESS;
     }
     
@@ -286,71 +281,58 @@ int execute_cmd(char *command)
         sel_args = cmd_args;
     }
 
-    //char **pipe_args = NULL;
-    //char **temp_args = sel_args;
+    char **pipe_args = NULL;
+    char **temp_args = sel_args;
+    char *pipe_temp[1024] = {0};
+    int pipe_temp_size = 0;
     bool pipe_exec = false;
     int start = 0;
     int end = argc - 1;
     
-    int fd[4];
-    if(pipe(fd) == -1) {
-        perror("pipe");
-    }
+    //if(pipe(parchildfd) == -1 || pipe(childparfd) == -1) {
+    //    perror("pipe");
+    //}
 
+    signal(SIGCHLD, sig_handler);
+    LOG("Value of argc is %d\n", argc);
     for(int ind = 0; ind < argc; ind++) {
-        if(argc != 1 && strncmp("|", sel_args[ind], 1) == 0) {
-            sel_args[ind] = NULL;
-            end = ind;
-            pipe_exec = true;
+        //if(argc != 1 && strncmp("|", sel_args[ind], 1) == 0) {
+        //    sel_args[ind] = NULL;
+        //    end = ind;
+        //    pipe_exec = true;
 
-            LOG("Pipe found as arg %d\n", ind);
-        } else if(ind == argc - 1 && start != 0) {
-            LOG("Last ind reached!%s\n", "");
-            end = ind;
-            pipe_exec = true;
-        }
+        //    LOG("Pipe found as arg %d\n", ind);
+        //} else if(ind == argc - 1 && start != 0) {
+        //    LOG("Last ind reached!%s\n", "");
+        //    end = ind;
+        //    pipe_exec = true;
+        //}
 
         if(ind == argc - 1 || pipe_exec) {
             pid_t child = fork();
             if (child == -1) {
                 perror("fork");
-                close(fd[0]);
-                close(fd[1]);
-                close(fd[2]);
-                close(fd[3]);
+                //close(fd[0]);
+                //close(fd[1]);
             } else if (child == 0) {
                 /* I am the child */
-                if(pipe_exec) {
-                    if(start == 0) {
-                        close(fd[0]);
-                        dup2(fd[1], STDOUT_FILENO);
-                        close(fd[1]);
-                        close(fd[2]);
-                    } else if(end == argc - 1) {
-                        close(fd[1]);
-                        dup2(fd[0], STDIN_FILENO);
-                        close(fd[0]);
-                        close(fd[2]);
-                        LOG("End of parse reached at %d\n", ind);
-                    } else {
-                        dup2(fd[1], STDOUT_FILENO);
-                        dup2(fd[0], STDIN_FILENO);
-                        close(fd[0]);
-                        close(fd[1]);
-                        close(fd[2]);
-                    }
-                } else {
-                    close(fd[0]);
-                    close(fd[1]);
-                    close(fd[2]);
-                }
-                         
+                LOG("CHILD PID IS: %d\n", getpid());
+                //if(pipe_exec) {
+                //    if(start == 0) {
+                //        //dup2(fd[1], STDOUT_FILENO);
+                //    } else if(end == argc - 1) {
+                //        //dup2(fd[0], STDIN_FILENO);
+                //        LOG("End of parse reached at %d\n", ind);
+                //    } else {
+                //        //dup2(fd[1], STDOUT_FILENO);
+                //        //dup2(fd[0], STDIN_FILENO);
+                //    }
+                //}
+
                 LOG("First arg (file location) is: %s\n", sel_args[start]);
                 if(strcmp("&", sel_args[argc - 1]) == 0) {
                     sel_args[argc - 1] = NULL;
-                    write(fd[3], getpid(), sizeof(getpid()));
                 }
-                close(fd[3]);
 
                 if(execvp(sel_args[start], sel_args + start) == -1) {
                     perror("exec");
@@ -358,22 +340,13 @@ int execute_cmd(char *command)
                     free(command);
                     free(buf_args);
                     free(buf_cmd);
+                    free(full_cmd);
                     exit(EXIT_FAILURE);
                 }
             } else {
                 /* I am the parent */
-                LOG("Value of argc is %d\n", argc);
-                //int status;
-                close(fd[1]);
-
-                signal(SIGCHLD, sig_handler);
                 if(argc != 0 && strcmp("&", sel_args[argc - 1]) == 0) {
-                    
-                    if(buf_args != NULL) {
-                        append_node(bg_jobs, buf_cmd, -1, true);
-                    } else {
-                        append_node(bg_jobs, command, -1, true);
-                    }
+                    append_node(bg_jobs, full_cmd, child, true);
                 } else {
                     wait(&status);
                 }
@@ -388,19 +361,26 @@ int execute_cmd(char *command)
                 LOG("Child exited with status code: %d\n", status);
             }
             
-            if(pipe_exec) {
-                start = end + 1;
-                pipe_exec = false;
-            }
+            //if(pipe_exec) {
+            //    start = end + 1;
+            //    pipe_exec = false;
+            //    while(ind != argc - 1 && read(fd[1], pipe_args, 1)) {
+            //        pipe_temp_size += 1;
+            //    }
+            //}
         }
     }
 
-    close(fd[0]);
-    
+    //if(pipe_exec) {
+    //    close(fd[0]);
+    //    close(fd[1]);
+    //}
+
     free(cmd_args);
     free(command);
     free(buf_args);
     free(buf_cmd);
+    free(full_cmd);
     LOG("Final frees executed%s\n", "");
     return EXIT_SUCCESS;
 }

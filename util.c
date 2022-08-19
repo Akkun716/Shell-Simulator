@@ -99,6 +99,35 @@ char *next_token(char **str_ptr, const char *delim) {
     return current_ptr;
 }
 
+int tok_str(char *str, char **buf[], char *delim, bool comments) {
+    char *str_iter = str;
+    char *curr_tok = NULL;
+    int arr_sz = 1;
+    int i = 0;
+
+    *buf = (char **) malloc(sizeof(char *));
+    while((curr_tok = next_token(&str_iter, delim)) != NULL) {
+        if(comments && strncmp("#", curr_tok, 1) == 0) {
+            break;
+        } else {
+            if(i == arr_sz) {
+                arr_sz *= 2;
+                *buf = (char **)realloc(*buf, arr_sz * sizeof(char *));
+            }
+            (*buf)[i] = curr_tok;
+            i++;
+        }
+    }
+
+    /* If the array is completely filled, add space for NULL terminator */
+    if(i == arr_sz) {
+        arr_sz += 1;
+        *buf = (char **)realloc(*buf, arr_sz * sizeof(char *));
+    }
+    (*buf)[i] = NULL;
+    return i;
+}
+
 char *str_to_lower(char *str) {
 	size_t stringlen = strlen(str);
 	char *copy = malloc(stringlen + 1);
