@@ -64,6 +64,25 @@ node_ptr get_node(struct LinkedHistory *list, int position)
     return list->track;
 }
 
+node_ptr find_id(struct LinkedHistory *list, int id)
+{
+    if(list->list_sz < 1) {
+        /* The list is empty */
+        perror("[The list was empty]\n");
+        return NULL;
+    }
+
+    list->track = list->head;
+    for(int i = 0; i < list->list_sz; i++) {
+        if(list->track->id == id) {
+            break; 
+        } else {
+            list->track = list->track->next;
+        }
+    }    
+    return list->track;
+}
+
 void del_head(struct LinkedHistory *list)
 {
     node_ptr del_node = list->head;
@@ -103,7 +122,7 @@ void del_tail(struct LinkedHistory *list)
 }
 
 
-void append_node(struct LinkedHistory *list, const char *str, uint32_t id, bool reduce_size)
+void append_node(struct LinkedHistory *list, const char *str, int id, bool reduce_size)
 {
     node_ptr new_node = (node_ptr) malloc(sizeof(struct Node));
 
@@ -139,7 +158,7 @@ void append_node(struct LinkedHistory *list, const char *str, uint32_t id, bool 
         } else {
             LOG("List max reached! Deleting oldest history entry %d...\n", list->head->id);
             if(reduce_size) {
-                remove_node(list, 0);
+                remove_node(list, 0, false);
                 list->list_sz += 1;
             } else {
                 del_head(list);
@@ -150,8 +169,13 @@ void append_node(struct LinkedHistory *list, const char *str, uint32_t id, bool 
     return;
 }
 
-void remove_node(struct LinkedHistory *list, int position) {
-    node_ptr del_node = get_node(list, position);
+void remove_node(struct LinkedHistory *list, int position, bool id) {
+    node_ptr del_node;
+    if(id) {
+        del_node = find_id(list, position);
+    } else {
+        del_node = get_node(list, position);
+    }
 
     if(del_node != NULL) {
         if(del_node->prev != NULL) {
@@ -171,10 +195,13 @@ void remove_node(struct LinkedHistory *list, int position) {
         list->total_id_count -= 1;
         list->list_sz -= 1;
 
-        node_ptr temp_node = del_node->next;
-        while(temp_node != NULL) {
-            temp_node->id -= 1;
-            temp_node = temp_node->next;
+        if(!id) {
+            node_ptr temp_node = del_node->next;
+
+            while(temp_node != NULL) {
+                temp_node->id -= 1;
+                temp_node = temp_node->next;
+            }
         }
 
         free(del_node->val);

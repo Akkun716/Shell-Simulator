@@ -26,7 +26,8 @@ struct LinkedHistory
 };
 
 node_ptr get_node(struct LinkedHistory *list, int position);
+node_ptr find_id(struct LinkedHistory *list, int id);
 void del_head(struct LinkedHistory *list);
 void del_tail(struct LinkedHistory *List);
-void append_node(struct LinkedHistory *list, const char *str, uint32_t id, bool reduce_size);
-void remove_node(struct LinkedHistory *list, int position);
+void append_node(struct LinkedHistory *list, const char *str, int id, bool reduce_size);
+void remove_node(struct LinkedHistory *list, int position, bool id);

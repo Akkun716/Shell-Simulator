@@ -9,6 +9,7 @@ static struct LinkedHistory *history = NULL;
 
 void hist_init(unsigned int limit)
 {
+    LOG("Initializing history%s\n", "");
     history = (struct LinkedHistory *) malloc(sizeof(struct LinkedHistory));
     history->list_max = limit;
     history->list_sz = 0;
@@ -38,7 +39,7 @@ void hist_remove(int command_number)
     LOG("Command %d to be removed is %s\n", command_number, hist_search_cnum(command_number));
     LOG("Value at tail was %s\n", hist_search_cnum(hist_last_cnum()));
     int offset = (history->total_id_count) - (history->list_sz);
-    remove_node(history, command_number - offset - 1);
+    remove_node(history, command_number - offset - 1, false);
     LOG("Value at tail is now %s\n", hist_search_cnum(hist_last_cnum()));
     history->track = NULL;
 }
