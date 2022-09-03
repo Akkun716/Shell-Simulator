@@ -110,13 +110,11 @@ char *prompt_cwd(void)
     if(strncmp(home, cwd, home_size) == 0) {
         int new_size = strlen(cwd) - home_size;
         if(new_size == 0) {
-            //char new_cwd[2];
             char *new_cwd = malloc(2 * sizeof(char));
             new_cwd[0] = '~';
             new_cwd[1] = '\0';
             return new_cwd;
         } else {
-            //char new_cwd[new_size + 2];
             char *new_cwd = malloc((new_size + 2) * sizeof(char));
             new_cwd[0] = '~';
             int new_ind = 1;

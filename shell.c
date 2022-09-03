@@ -20,6 +20,9 @@ static struct LinkedHistory *bg_jobs = NULL;
 #define BG_LIMIT 10
 #define CMD_DELIM " \t\r\n"
 
+/* Holds the previous cd directory */
+static char *prev_pwd = NULL;
+
 /* Used for the forking status var */
 static int status = 0;
 static int parchildfd[2];
@@ -70,15 +73,23 @@ int exit_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *ol
  */
 int cd_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *old_cmd) {
     int output = 0;
+    char *temp = getcwd(NULL, 0);
+
     if(*buf != NULL) {
         if(*buf[1] == NULL) {
             output = chdir(getenv("HOME"));
-        } else {
+        } else if(strcmp(*buf[1], "-") == 0 && prev_pwd != NULL){
+	    LOG("Made it into - conditional%s\n", "");
+	    output = chdir(prev_pwd);
+	} else {
             output = chdir(*buf[1]);
         }
     } else {
         if(args[1] == NULL) {
             output = chdir(getenv("HOME"));
+        } else if(strcmp(args[1], "-") == 0 && prev_pwd != NULL) {
+	    LOG("Made it into - conditional%s\n", "");
+	    output = chdir(prev_pwd);
         } else {
             output = chdir(args[1]);
         }
@@ -87,6 +98,11 @@ int cd_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *old_
     if(output == -1) {
         perror("chdir");
     } else {
+	LOG("Checking if prev_pwd is empty...%s\n", "");
+	if(prev_pwd != NULL) { free(prev_pwd); }
+	LOG("Setting prev_pwd%s\n", "");
+	prev_pwd = temp;
+	LOG("prev_pwd is now %s\n", prev_pwd);
     }
 
     return output;
@@ -281,10 +297,12 @@ int execute_cmd(char *command)
         sel_args = cmd_args;
     }
 
-    char **pipe_args = NULL;
+    char *io_redir[2] = {0};
+    int redir_fd[3] = {0};
+    //char **pipe_args = NULL;
     char **temp_args = sel_args;
-    char *pipe_temp[1024] = {0};
-    int pipe_temp_size = 0;
+    //char *pipe_temp[1024] = {0};
+    //int pipe_temp_size = 0;
     bool pipe_exec = false;
     int start = 0;
     int end = argc - 1;
@@ -300,6 +318,31 @@ int execute_cmd(char *command)
         //    sel_args[ind] = NULL;
         //    end = ind;
         //    pipe_exec = true;
+	
+	    if(ind != 0) {
+	        if(strcmp("<", sel_args[ind]) == 0) {
+	            io_redir[0] = sel_args[ind - 1];
+                sel_args[ind] = NULL;
+                redir_fd[0] = 1;
+            } else if(ind < end) {
+                if(strcmp(">", sel_args[ind]) == 0) {
+                    io_redir[1] = sel_args[ind + 1];
+                    sel_args[ind] = NULL;
+                    redir_fd[1] = 1;
+                } else if(strcmp(">>", sel_args[ind]) == 0) { 
+                    io_redir[1] = sel_args[ind + 1];
+                    sel_args[ind] = NULL;
+                    redir_fd[1] = 2;
+                }
+            }
+	    }
+ 
+        if(redir_fd[0]) {
+            LOG("Val of io_redir[0] is '%s'\n", io_redir[0]);
+        }
+        if(redir_fd[1]) {
+            LOG("Val of io_redir[1] is '%s'\n", io_redir[1]);
+        }
 
         //    LOG("Pipe found as arg %d\n", ind);
         //} else if(ind == argc - 1 && start != 0) {
@@ -307,7 +350,9 @@ int execute_cmd(char *command)
         //    end = ind;
         //    pipe_exec = true;
         //}
-
+        
+        LOG("DONE CHECKING ARG %d\n", ind);
+ 
         if(ind == argc - 1 || pipe_exec) {
             pid_t child = fork();
             if (child == -1) {
@@ -328,6 +373,23 @@ int execute_cmd(char *command)
                 //        //dup2(fd[0], STDIN_FILENO);
                 //    }
                 //}
+
+                if(redir_fd[0]) {
+                    redir_fd[2] = open(io_redir[0], O_RDONLY, 0666);
+	                redir_fd[0] = dup2(redir_fd[2], STDIN_FILENO);
+                    close(redir_fd[2]);
+                }
+
+                if(redir_fd[1]) {
+                    if(redir_fd[1] == 2) {
+                        redir_fd[2] = open(io_redir[1], O_CREAT | O_WRONLY | O_APPEND, 0666);
+                    } else {
+                        redir_fd[2] = open(io_redir[1], O_CREAT | O_WRONLY, 0666);
+                    }    
+
+                    redir_fd[1] = dup2(redir_fd[2], STDOUT_FILENO);
+                    close(redir_fd[2]);
+                }
 
                 LOG("First arg (file location) is: %s\n", sel_args[start]);
                 if(strcmp("&", sel_args[argc - 1]) == 0) {
@@ -357,7 +419,6 @@ int execute_cmd(char *command)
                     good_status();
                 }
 
-
                 LOG("Child exited with status code: %d\n", status);
             }
             
@@ -370,7 +431,7 @@ int execute_cmd(char *command)
             //}
         }
     }
-
+   
     //if(pipe_exec) {
     //    close(fd[0]);
     //    close(fd[1]);
@@ -443,6 +504,7 @@ int main(void)
     bg_destroy();
     hist_destroy();
     destroy_ui();
+    if(prev_pwd != NULL) { free(prev_pwd); }
     LOG("Thank you for using the %s!\nExiting shell...\n", "Frequently Inconsistant Shell");
     return 0;
 }

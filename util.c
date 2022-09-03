@@ -99,6 +99,19 @@ char *next_token(char **str_ptr, const char *delim) {
     return current_ptr;
 }
 
+int resize_arr(char **arr[], int arr_sz, int oper, int val) {
+    switch(oper) {
+	case 0:
+	    arr_sz += val;
+	    break;
+	case 1:
+	    arr_sz *= val;
+	    break;
+    }
+    *arr = (char **)realloc(*arr, arr_sz * sizeof(char *));
+    return arr_sz;
+}
+
 int tok_str(char *str, char **buf[], char *delim, bool comments) {
     char *str_iter = str;
     char *curr_tok = NULL;
@@ -111,9 +124,8 @@ int tok_str(char *str, char **buf[], char *delim, bool comments) {
             break;
         } else {
             if(i == arr_sz) {
-                arr_sz *= 2;
-                *buf = (char **)realloc(*buf, arr_sz * sizeof(char *));
-            }
+                arr_sz = resize_arr(buf, arr_sz, 1, 2);
+	    }
             (*buf)[i] = curr_tok;
             i++;
         }
@@ -121,8 +133,9 @@ int tok_str(char *str, char **buf[], char *delim, bool comments) {
 
     /* If the array is completely filled, add space for NULL terminator */
     if(i == arr_sz) {
-        arr_sz += 1;
-        *buf = (char **)realloc(*buf, arr_sz * sizeof(char *));
+        //arr_sz += 1;
+        //*buf = (char **)realloc(*buf, arr_sz * sizeof(char *));
+        arr_sz = resize_arr(buf, arr_sz, 0, 1);
     }
     (*buf)[i] = NULL;
     return i;
