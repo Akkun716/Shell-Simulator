@@ -25,8 +25,6 @@ static char *prev_pwd = NULL;
 
 /* Used for the forking status var */
 static int status = 0;
-static int parchildfd[2];
-static int childparfd[2];
 //static int child_queue[BG_LIMIT] = {0};
 //static int queue_ind = -1;
 
@@ -240,7 +238,6 @@ void sig_handler(int signo) {
             fflush(stdout);
             break;
         case SIGCHLD:
-            //LOG("PID during signal handler is %d\n", getpid());
             int id = -1;
             if((id = waitpid(-1, &status, WNOHANG)) > 0) {
                 remove_node(bg_jobs, id, true);
@@ -248,6 +245,80 @@ void sig_handler(int signo) {
             LOG("The value from wait was %d\n", id);
             break;
     }
+}
+
+int next_null(char *sel_args[]) {
+    int i = 0;
+    while(sel_args[i] != NULL) { i += 1; }
+    return i;
+}
+
+char **io_redir_handle(char **sel_args, int *redir_fd[], char *io_redir[]) {
+    int next_ind = next_null(sel_args);
+    if((next_ind == redir_fd[0][1] || next_ind == redir_fd[1][1]) &&
+        (strcmp(sel_args[next_ind - 1], io_redir[0]) == 0 ||
+        strcmp(sel_args[next_ind - 1], io_redir[1]) == 0)) {
+        return sel_args + next_ind;
+    }
+    return sel_args;
+}
+
+int exec_pipe(char *sel_args[], int argc, int *redir_fd[], char *io_redir[]) {
+    int i = 0;
+    int child;
+    while(sel_args[i] != NULL) { i += 1; }
+
+    if(i == argc) {
+        child = fork();
+        if(child == -1) {
+            perror("fork");
+        } else if (child == 0) {
+            if(redir_fd[0][0] || redir_fd[1][0]) {
+                file_redir(redir_fd, io_redir);
+            }
+            execvp(sel_args[0], sel_args);
+        } else {
+            wait(&status);
+            return status;
+        }
+    } else {
+        /* Pipe vars */
+        int fds[2];
+        int stdin_fd;
+        int stdout_fd;
+        //if(pipe(fds) == -1) { perror("pipe"); }
+
+        child = fork();
+        if(child == -1) {
+            perror("fork");
+        } else if(child == 0) {
+        }
+    }
+    return 0;
+}
+
+int file_redir(int redir_fd[], char *io_redir[]) {
+    LOG("Checking redir%s\n", "");
+    LOG("Vals at fd-10: %d\n", redir_fd[1]);
+    if(redir_fd[0]) {
+        LOG("Current input file should be: %s\n", io_redir[0]);
+        redir_fd[2] = open(io_redir[0], O_RDONLY, 0666);
+	    redir_fd[0] = dup2(redir_fd[2], STDIN_FILENO);
+        close(redir_fd[2]);
+    }
+
+    if(redir_fd[1]) {
+        LOG("Current output file should be: %s\n", io_redir[1]);
+        if(redir_fd[1] == 2) {
+            redir_fd[2] = open(io_redir[1], O_CREAT | O_WRONLY | O_APPEND, 0666);
+        } else {
+            redir_fd[2] = open(io_redir[1], O_CREAT | O_WRONLY, 0666);
+        }    
+
+        redir_fd[1] = dup2(redir_fd[2], STDOUT_FILENO);
+        close(redir_fd[2]);
+    }
+    return 0;
 }
 
 /**
@@ -262,6 +333,7 @@ int execute_cmd(char *command)
         return 0;
     }
 
+    /* Input command vars */
     char **cmd_args = NULL;
     char **buf_args = NULL;
     char **sel_args = NULL;
@@ -291,152 +363,101 @@ int execute_cmd(char *command)
     
     free(old_cmd);
 
+    /* Checks for bang handle execution */
     if(buf_args != NULL) {
         sel_args = buf_args;
     } else {
         sel_args = cmd_args;
     }
 
+    /* IO Redirection vars */
     char *io_redir[2] = {0};
     int redir_fd[3] = {0};
-    //char **pipe_args = NULL;
-    char **temp_args = sel_args;
-    //char *pipe_temp[1024] = {0};
-    //int pipe_temp_size = 0;
     bool pipe_exec = false;
-    int start = 0;
-    int end = argc - 1;
     
-    //if(pipe(parchildfd) == -1 || pipe(childparfd) == -1) {
-    //    perror("pipe");
-    //}
-
     signal(SIGCHLD, sig_handler);
     LOG("Value of argc is %d\n", argc);
+    
     for(int ind = 0; ind < argc; ind++) {
-        //if(argc != 1 && strncmp("|", sel_args[ind], 1) == 0) {
-        //    sel_args[ind] = NULL;
-        //    end = ind;
-        //    pipe_exec = true;
-	
-	    if(ind != 0) {
-	        if(strcmp("<", sel_args[ind]) == 0) {
-	            io_redir[0] = sel_args[ind - 1];
+        if(argc != 1 && strncmp("|", sel_args[ind], 1) == 0) {
+            /* Pipe check */
+            LOG("Pipe found at arg %d\n", ind);
+            pipe_exec = true;
+        } else if(ind != 0 && ind != argc - 1) {
+            /* IO Redirection check */
+   	        if(strcmp("<", sel_args[ind]) == 0) {
                 sel_args[ind] = NULL;
+	            io_redir[0] = sel_args[ind - 1];
                 redir_fd[0] = 1;
-            } else if(ind < end) {
-                if(strcmp(">", sel_args[ind]) == 0) {
-                    io_redir[1] = sel_args[ind + 1];
-                    sel_args[ind] = NULL;
-                    redir_fd[1] = 1;
-                } else if(strcmp(">>", sel_args[ind]) == 0) { 
-                    io_redir[1] = sel_args[ind + 1];
-                    sel_args[ind] = NULL;
-                    redir_fd[1] = 2;
-                }
+                LOG("Val of io_redir[0] is '%s'\n", io_redir[0]);
+            } else if(strcmp(">", sel_args[ind]) == 0) {
+                sel_args[ind] = NULL;
+                io_redir[1] = sel_args[ind + 1];
+                redir_fd[1] = 1;
+            } else if(strcmp(">>", sel_args[ind]) == 0) { 
+                sel_args[ind] = NULL;
+                io_redir[1] = sel_args[ind + 1];
+                redir_fd[1] = 2;
             }
-	    }
- 
-        if(redir_fd[0]) {
-            LOG("Val of io_redir[0] is '%s'\n", io_redir[0]);
+
+            if(redir_fd[1]) {
+                LOG("Val of redir_fd[1] is %d\n", redir_fd[1]);
+                LOG("Val of io_redir[1] is '%s'\n", io_redir[1]);
+            }
         }
-        if(redir_fd[1]) {
-            LOG("Val of io_redir[1] is '%s'\n", io_redir[1]);
-        }
-
-        //    LOG("Pipe found as arg %d\n", ind);
-        //} else if(ind == argc - 1 && start != 0) {
-        //    LOG("Last ind reached!%s\n", "");
-        //    end = ind;
-        //    pipe_exec = true;
-        //}
-        
-        LOG("DONE CHECKING ARG %d\n", ind);
+    }
  
-        if(ind == argc - 1 || pipe_exec) {
-            pid_t child = fork();
-            if (child == -1) {
-                perror("fork");
-                //close(fd[0]);
-                //close(fd[1]);
-            } else if (child == 0) {
-                /* I am the child */
-                LOG("CHILD PID IS: %d\n", getpid());
-                //if(pipe_exec) {
-                //    if(start == 0) {
-                //        //dup2(fd[1], STDOUT_FILENO);
-                //    } else if(end == argc - 1) {
-                //        //dup2(fd[0], STDIN_FILENO);
-                //        LOG("End of parse reached at %d\n", ind);
-                //    } else {
-                //        //dup2(fd[1], STDOUT_FILENO);
-                //        //dup2(fd[0], STDIN_FILENO);
-                //    }
-                //}
+    LOG("DONE CHECKING ARGS %s\n", "");
+    
+    if(pipe_exec) {
 
-                if(redir_fd[0]) {
-                    redir_fd[2] = open(io_redir[0], O_RDONLY, 0666);
-	                redir_fd[0] = dup2(redir_fd[2], STDIN_FILENO);
-                    close(redir_fd[2]);
-                }
+    } else {
+        pid_t child = fork();
+        if (child == -1) {
+            perror("fork");
+        } else if (child == 0) {
+            /* I am the child */
+            LOG("CHILD PID IS: %d\n", getpid());
 
-                if(redir_fd[1]) {
-                    if(redir_fd[1] == 2) {
-                        redir_fd[2] = open(io_redir[1], O_CREAT | O_WRONLY | O_APPEND, 0666);
-                    } else {
-                        redir_fd[2] = open(io_redir[1], O_CREAT | O_WRONLY, 0666);
-                    }    
-
-                    redir_fd[1] = dup2(redir_fd[2], STDOUT_FILENO);
-                    close(redir_fd[2]);
-                }
-
-                LOG("First arg (file location) is: %s\n", sel_args[start]);
-                if(strcmp("&", sel_args[argc - 1]) == 0) {
-                    sel_args[argc - 1] = NULL;
-                }
-
-                if(execvp(sel_args[start], sel_args + start) == -1) {
-                    perror("exec");
-                    free(cmd_args);
-                    free(command);
-                    free(buf_args);
-                    free(buf_cmd);
-                    free(full_cmd);
-                    exit(EXIT_FAILURE);
-                }
-            } else {
-                /* I am the parent */
-                if(argc != 0 && strcmp("&", sel_args[argc - 1]) == 0) {
-                    append_node(bg_jobs, full_cmd, child, true);
-                } else {
-                    wait(&status);
-                }
-
-                if(status != 0) {
-                    bad_status();
-                } else {
-                    good_status();
-                }
-
-                LOG("Child exited with status code: %d\n", status);
+            LOG("First arg (file location) is: %s\n", sel_args[0]);
+            if(strcmp("&", sel_args[argc - 1]) == 0) {
+                sel_args[argc - 1] = NULL;
             }
             
-            //if(pipe_exec) {
-            //    start = end + 1;
-            //    pipe_exec = false;
-            //    while(ind != argc - 1 && read(fd[1], pipe_args, 1)) {
-            //        pipe_temp_size += 1;
-            //    }
-            //}
+            
+            file_redir(redir_fd, io_redir);
+
+            LOG("Current val at sel_args[0]: %s\n", sel_args[0]);
+            //sel_args = io_redir_handle(sel_args, redir_fd, io_redir);
+            LOG("Current val at new sel_args[0]: %s\n", sel_args[0]); 
+
+            if(execvp(sel_args[0], sel_args) == -1) {
+                perror("exec");
+                free(cmd_args);
+                free(command);
+                free(buf_args);
+                free(buf_cmd);
+                free(full_cmd);
+                exit(EXIT_FAILURE);
+            }
+        } else {
+            /* I am the parent */
+            if(argc != 0 && strcmp("&", sel_args[argc - 1]) == 0) {
+                append_node(bg_jobs, full_cmd, child, true);
+            } else {
+                wait(&status);
+            }
+
+            if(status != 0) {
+                bad_status();
+            } else {
+                good_status();
+            }
+
+            LOG("Child exited with status code: %d\n", status);
         }
     }
    
-    //if(pipe_exec) {
-    //    close(fd[0]);
-    //    close(fd[1]);
-    //}
-
     free(cmd_args);
     free(command);
     free(buf_args);
