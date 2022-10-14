@@ -12,8 +12,6 @@ make
 
 ## Program Options
 
-TODO: Provide an overview of program options and their descriptions, if applicable. If the program does not accept any options, delete this section.
-
 ```bash
 $ ./some_prog -h
 Usage: ./some_prog [-z] [-d dir]
