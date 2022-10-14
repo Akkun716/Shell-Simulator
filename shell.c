@@ -247,54 +247,47 @@ void sig_handler(int signo) {
     }
 }
 
-int next_null(char *sel_args[]) {
+/**
+ * 
+ */
+int next_null(char *sel_args[], int argc) {
     int i = 0;
-    while(sel_args[i] != NULL) { i += 1; }
+    while(i < argc && sel_args[i] != NULL) { i += 1; }
     return i;
 }
 
-char **io_redir_handle(char **sel_args, int *redir_fd[], char *io_redir[]) {
-    int next_ind = next_null(sel_args);
-    if((next_ind == redir_fd[0][1] || next_ind == redir_fd[1][1]) &&
-        (strcmp(sel_args[next_ind - 1], io_redir[0]) == 0 ||
-        strcmp(sel_args[next_ind - 1], io_redir[1]) == 0)) {
-        return sel_args + next_ind;
-    }
-    return sel_args;
-}
-
-int exec_pipe(char *sel_args[], int argc, int *redir_fd[], char *io_redir[]) {
-    int i = 0;
-    int child;
-    while(sel_args[i] != NULL) { i += 1; }
-
-    if(i == argc) {
-        child = fork();
-        if(child == -1) {
-            perror("fork");
-        } else if (child == 0) {
-            if(redir_fd[0][0] || redir_fd[1][0]) {
-                file_redir(redir_fd, io_redir);
-            }
-            execvp(sel_args[0], sel_args);
-        } else {
-            wait(&status);
-            return status;
+bool io_redir_check(char *sel_args[], int argc, int redir_fd[], int redir_ind[], char *io_redir[]) {
+    int ind = 1;
+    int nxt_null = next_null(sel_args, argc);
+    bool found = false;
+    while(ind < nxt_null - 1) {
+        /* IO Redirection check */
+   	    if(strcmp("<", sel_args[ind]) == 0) {
+            sel_args[ind] = NULL;
+	        io_redir[0] = sel_args[ind + 1];
+            redir_fd[0] = 1;
+            redir_ind[0] = ind;
+            found = true;
+            LOG("Val of io_redir[0] is '%s'\n", io_redir[0]);
+        } else if(strcmp(">", sel_args[ind]) == 0) {
+            redir_fd[1] = 1;
+        } else if(strcmp(">>", sel_args[ind]) == 0) { 
+            redir_fd[1] = 2;
         }
-    } else {
-        /* Pipe vars */
-        int fds[2];
-        int stdin_fd;
-        int stdout_fd;
-        //if(pipe(fds) == -1) { perror("pipe"); }
 
-        child = fork();
-        if(child == -1) {
-            perror("fork");
-        } else if(child == 0) {
+        if(redir_fd[1]) {
+            sel_args[ind] = NULL;
+            io_redir[1] = sel_args[ind + 1];
+            redir_ind[1] = ind;
+            found = true;
+            LOG("Val of redir_fd[1] is %d\n", redir_fd[1]);
+            LOG("Val of io_redir[1] is '%s'\n", io_redir[1]);
         }
+
+        ind += 1;
     }
-    return 0;
+
+    return found;
 }
 
 int file_redir(int redir_fd[], char *io_redir[]) {
@@ -302,9 +295,10 @@ int file_redir(int redir_fd[], char *io_redir[]) {
     LOG("Vals at fd-10: %d\n", redir_fd[1]);
     if(redir_fd[0]) {
         LOG("Current input file should be: %s\n", io_redir[0]);
-        redir_fd[2] = open(io_redir[0], O_RDONLY, 0666);
+        redir_fd[2] = open(io_redir[0], O_RDONLY);
 	    redir_fd[0] = dup2(redir_fd[2], STDIN_FILENO);
         close(redir_fd[2]);
+        LOG("New input fd is: %d\n", redir_fd[0]);
     }
 
     if(redir_fd[1]) {
@@ -317,12 +311,64 @@ int file_redir(int redir_fd[], char *io_redir[]) {
 
         redir_fd[1] = dup2(redir_fd[2], STDOUT_FILENO);
         close(redir_fd[2]);
+        LOG("New output fd is: %d\n", redir_fd[1]);
+    }
+
+    return 0;
+}
+
+bool pipe_check(char *sel_args[], int argc) { 
+    for(int ind = 0; ind < argc; ind++) {
+        if(argc != 1 && strncmp("|", sel_args[ind], 1) == 0) {
+            /* Pipe check */
+            LOG("Pipe found at arg %d\n", ind);
+            return true;
+        }
+    }
+    return false;
+}
+
+int exec_pipe(char *sel_args[], int argc,  int redir_fd[], int redir_ind[], char *io_redir[]) {
+    int start = 0;
+    int i = 0;
+    int child;
+    /* Pipe vars */
+    int fds[2];
+    int stdin_fd;
+    int stdout_fd;
+
+    if(pipe(fds) == -1) { perror("pipe"); }
+    
+    while(start < argc) {
+        while(sel_args[i] != NULL) { i += 1; }
+
+        child = fork();
+        if(child == -1) {
+            perror("fork");
+        } else if (child == 0) {
+            if(io_redir_check(sel_args, argc, redir_fd, redir_ind, io_redir)) { 
+                file_redir(redir_fd, io_redir);
+                //int nxt_null = next_null(sel_args, argc);
+                //if(nxt_null < 3) {
+                //    sel_args = sel_args + nxt_null + 1;
+                //}
+            }
+            if(start == 0 || i == argc)
+            if(redir_fd[0][0] || redir_fd[1][0]) {
+                file_redir(redir_fd, io_redir);
+            }
+            execvp(sel_args[start], sel_args + (start * sizeof(char*)));
+        } else {
+            wait(&status);
+            return status;
+        }
+        start = i + 1;
     }
     return 0;
 }
 
 /**
- * Attempts to execute the inputted command. First tokenizes, then 
+ * Attempts to execute the inputted command. The shell tokenizes the command, then checks if piping is to be executed. If it is, a special pipe handler function is executed. After checking, the shell then checks if the command is a builtin function and if it is not, then the code proceeds to check for file redirection within the command. After that has been handled, the command is finally executed
  */
 int execute_cmd(char *command)
 {
@@ -341,6 +387,12 @@ int execute_cmd(char *command)
     char *buf_cmd = NULL;
     char *full_cmd = strdup(command);
     int argc = 0;
+    /* IO Redirection vars */
+    char *io_redir[2] = {0};
+    int redir_fd[3] = {0};
+    int redir_ind[2] = {-1, -1};
+    /* Pipe check */
+    bool pipe_found = false;
 
     if(hist_oldest_cnum() != -1) {
         old_cmd = strdup(hist_search_cnum(hist_oldest_cnum()));
@@ -349,16 +401,20 @@ int execute_cmd(char *command)
     hist_add(full_cmd);
     argc = tok_str(command, &cmd_args, CMD_DELIM, true);
 
-    if(builtin_handler(cmd_args, &argc, &buf_args, &buf_cmd, old_cmd) == 0) {
-        LOG("Builtin handled!%s\n", "");
-        good_status();
-        free(cmd_args);
-        free(command);
-        free(buf_args);
-        free(buf_cmd);
-        free(old_cmd);
-        free(full_cmd);
-        return EXIT_SUCCESS;
+    pipe_found = pipe_check(cmd_args, argc);
+
+    if(!pipe_found) {
+        if(builtin_handler(cmd_args, &argc, &buf_args, &buf_cmd, old_cmd) == 0) {
+            LOG("Builtin handled!%s\n", "");
+            good_status();
+            free(cmd_args);
+            free(command);
+            free(buf_args);
+            free(buf_cmd);
+            free(old_cmd);
+            free(full_cmd);
+            return EXIT_SUCCESS;
+        }
     }
     
     free(old_cmd);
@@ -370,48 +426,18 @@ int execute_cmd(char *command)
         sel_args = cmd_args;
     }
 
-    /* IO Redirection vars */
-    char *io_redir[2] = {0};
-    int redir_fd[3] = {0};
-    bool pipe_exec = false;
-    
+
+
     signal(SIGCHLD, sig_handler);
     LOG("Value of argc is %d\n", argc);
     
-    for(int ind = 0; ind < argc; ind++) {
-        if(argc != 1 && strncmp("|", sel_args[ind], 1) == 0) {
-            /* Pipe check */
-            LOG("Pipe found at arg %d\n", ind);
-            pipe_exec = true;
-        } else if(ind != 0 && ind != argc - 1) {
-            /* IO Redirection check */
-   	        if(strcmp("<", sel_args[ind]) == 0) {
-                sel_args[ind] = NULL;
-	            io_redir[0] = sel_args[ind - 1];
-                redir_fd[0] = 1;
-                LOG("Val of io_redir[0] is '%s'\n", io_redir[0]);
-            } else if(strcmp(">", sel_args[ind]) == 0) {
-                sel_args[ind] = NULL;
-                io_redir[1] = sel_args[ind + 1];
-                redir_fd[1] = 1;
-            } else if(strcmp(">>", sel_args[ind]) == 0) { 
-                sel_args[ind] = NULL;
-                io_redir[1] = sel_args[ind + 1];
-                redir_fd[1] = 2;
-            }
-
-            if(redir_fd[1]) {
-                LOG("Val of redir_fd[1] is %d\n", redir_fd[1]);
-                LOG("Val of io_redir[1] is '%s'\n", io_redir[1]);
-            }
-        }
-    }
  
     LOG("DONE CHECKING ARGS %s\n", "");
     
-    if(pipe_exec) {
 
-    } else {
+    /*if(pipe_found || pipe_check(sel_args, argc)) {
+        exec_pipe(sel_args, argc, redir_fd, io_redir);    
+    } else {*/
         pid_t child = fork();
         if (child == -1) {
             perror("fork");
@@ -424,8 +450,13 @@ int execute_cmd(char *command)
                 sel_args[argc - 1] = NULL;
             }
             
-            
-            file_redir(redir_fd, io_redir);
+            if(io_redir_check(sel_args, argc, redir_fd, redir_ind, io_redir)) { 
+                file_redir(redir_fd, io_redir);
+                //int nxt_null = next_null(sel_args, argc);
+                //if(nxt_null < 3) {
+                //    sel_args = sel_args + nxt_null + 1;
+                //}
+            }
 
             LOG("Current val at sel_args[0]: %s\n", sel_args[0]);
             //sel_args = io_redir_handle(sel_args, redir_fd, io_redir);
@@ -456,7 +487,8 @@ int execute_cmd(char *command)
 
             LOG("Child exited with status code: %d\n", status);
         }
-    }
+    //}
+    
    
     free(cmd_args);
     free(command);
