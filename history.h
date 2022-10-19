@@ -14,6 +14,7 @@ void hist_remove(int command_number);
 void hist_print(void);
 const char *hist_search_prefix(char *, int);
 const char *hist_search_cnum(int);
+void hist_track_clear();
 const char *hist_track_val();
 const char *hist_track_prev_val();
 const char *hist_track_next_val();
