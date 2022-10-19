@@ -25,11 +25,9 @@ static char *prev_pwd = NULL;
 
 /* Used for the forking status var */
 static int status = 0;
-//static int child_queue[BG_LIMIT] = {0};
-//static int queue_ind = -1;
 
 /**
- * Initializes the background list with a list max based on the passed limit
+ * Initializes the background list with a list max based on the passed limit.
  *
  * @param limit the specified limit of max elements contained in list 
  */
@@ -46,7 +44,7 @@ void bg_init(unsigned int limit)
 }
 
 /**
- * Frees each element of the background list before freeing the pointer itself
+ * Frees each element of the background list before freeing the pointer itself.
  */
 void bg_destroy(void)
 {
@@ -57,17 +55,17 @@ void bg_destroy(void)
 }
 
 
-/* All builtin functions use the same arguments. Refer to builtin_handler() for arg explanations */
+/* All builtin functions use the same arguments. Refer to builtin_handler() for arg explanations. */
 
 /**
- * Exits the program
+ * Exits the program.
  */
 int exit_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *old_cmd) {
     exit(EXIT_SUCCESS);
 }
 
 /**
- * Initializes the background list with a list max based on the passed limit
+ * Initializes the background list with a list max based on the passed limit.
  */
 int cd_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *old_cmd) {
     int output = 0;
@@ -107,7 +105,7 @@ int cd_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *old_
 } 
 
 /**
- * Prints the history list
+ * Prints the history list.
  */
 int hist_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *old_cmd) {
     hist_print();
@@ -115,15 +113,15 @@ int hist_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *ol
 }
 
 /**
- * Attempts to retrieve the specified command from the bang command
+ * Attempts to retrieve the specified command from the bang command.
  */
 int bang_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *old_cmd) {
     /* If the first arg contains a bang, if 1) that is the only
      * arg, exit with 0, executing nothing. Else 2) if there are
      * other args, exit with -1 for command to be executed normally
      */
-    int bang_num = 0;
-    char *bang_cmd = NULL;
+    int bang_num;
+    const char *bang_cmd = NULL;
     LOG("Bang handler executed!%s\n", "");
 
     if(*argc == 1 && strcmp(args[0], "!") == 0) {
@@ -133,7 +131,7 @@ int bang_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *ol
 
     if(strcmp(args[0], "!!") == 0) {
         bang_cmd = hist_search_cnum(hist_last_cnum() - 1);
-    } else if((bang_num = atoi(args[0] + 1)) != NULL) {
+    } else if((bang_num = atoi(args[0] + 1)) != 0) {
         /* Checks if the oldest command num is one prior the current oldest */
         if(bang_num == hist_oldest_cnum() - 1 && old_cmd != NULL) {
             bang_cmd = old_cmd;
@@ -168,7 +166,7 @@ int bang_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *ol
 }
 
 /**
- * Prints the list of currently active background jobs
+ * Prints the list of currently active background jobs.
  */
 int jobs_handler(char *args[], int *argc, char **buf[], char **buf_cmd, char *old_cmd)
 { 
@@ -248,75 +246,79 @@ void sig_handler(int signo) {
 }
 
 /**
- * 
+ * Searches for the next instance of NULL character in String array.
+ *
+ * @param sel_args array of String tokens from command
+ * @param argc amount of arguments in sel_args
+ * @return index of next occurance of NULL character or -1 if not found
  */
-int next_null(char *sel_args[], int argc) {
+int next_null(const char *sel_args[], int argc) {
     int i = 0;
-    while(i < argc && sel_args[i] != NULL) { i += 1; }
-    return i;
+    while(i < argc) {
+        if(sel_args[i] == NULL) { return i; }
+        i += 1;
+    }
+    return -1;
 }
 
-bool io_redir_check(char *sel_args[], int argc, int redir_fd[], int redir_ind[], char *io_redir[]) {
+/**
+ * Checks the tokenized command if one of the elements promotes a redireciton
+ * and then redirects standard input and output to specified files.
+ *
+ * @param sel_args array of String tokens from command
+ * @param argc amount of arguments in sel_args
+ * @param redir_fd array of 3 file descriptors: two for current input and
+ *  output with another serving as a temp descriptor
+ * @return 0 if no errors are thrown
+ */
+int file_redir(char *sel_args[], int argc, int redir_fd[]) {
     int ind = 1;
-    int nxt_null = next_null(sel_args, argc);
-    bool found = false;
+    int nxt_null = next_null((const char **) sel_args, argc + 1);
+    LOG("Val of next null is %d\n", nxt_null);
     while(ind < nxt_null - 1) {
         /* IO Redirection check */
    	    if(strcmp("<", sel_args[ind]) == 0) {
+            LOG("Input redir found at %d\n", ind);
             sel_args[ind] = NULL;
-	        io_redir[0] = sel_args[ind + 1];
-            redir_fd[0] = 1;
-            redir_ind[0] = ind;
-            found = true;
-            LOG("Val of io_redir[0] is '%s'\n", io_redir[0]);
-        } else if(strcmp(">", sel_args[ind]) == 0) {
-            redir_fd[1] = 1;
-        } else if(strcmp(">>", sel_args[ind]) == 0) { 
+            redir_fd[2] = open(sel_args[ind + 1], O_RDONLY);
+	        redir_fd[0] = dup2(redir_fd[2], STDIN_FILENO);
+            close(redir_fd[2]);
+            LOG("New input file is: %s\n", sel_args[ind + 1]);
+            LOG("New input fd is: %d\n", redir_fd[0]);
+        } else if(strcmp(">>", sel_args[ind]) == 0) {
             redir_fd[1] = 2;
+            redir_fd[2] = 1;
+        } else if(strcmp(">", sel_args[ind]) == 0) { 
+            redir_fd[1] = 1;
+            redir_fd[2] = 1;
         }
 
-        if(redir_fd[1]) {
+        if(redir_fd[1] && redir_fd[2]) {
             sel_args[ind] = NULL;
-            io_redir[1] = sel_args[ind + 1];
-            redir_ind[1] = ind;
-            found = true;
-            LOG("Val of redir_fd[1] is %d\n", redir_fd[1]);
-            LOG("Val of io_redir[1] is '%s'\n", io_redir[1]);
+            if(redir_fd[1] == 2) {
+                redir_fd[2] = open(sel_args[ind + 1], O_CREAT | O_WRONLY | O_APPEND, 0666);
+            } else {
+                redir_fd[2] = open(sel_args[ind + 1], O_CREAT | O_WRONLY, 0666);
+            }    
+            redir_fd[1] = dup2(redir_fd[2], STDOUT_FILENO);
+            close(redir_fd[2]);
+            redir_fd[2] = 0;
+            LOG("New output file is: %s\n", sel_args[ind + 1]);
+            LOG("New redir_fd[1] is %d\n", redir_fd[1]);
         }
 
         ind += 1;
+    
     }
-
-    return found;
-}
-
-int file_redir(int redir_fd[], char *io_redir[]) {
-    LOG("Checking redir%s\n", "");
-    LOG("Vals at fd-10: %d\n", redir_fd[1]);
-    if(redir_fd[0]) {
-        LOG("Current input file should be: %s\n", io_redir[0]);
-        redir_fd[2] = open(io_redir[0], O_RDONLY);
-	    redir_fd[0] = dup2(redir_fd[2], STDIN_FILENO);
-        close(redir_fd[2]);
-        LOG("New input fd is: %d\n", redir_fd[0]);
-    }
-
-    if(redir_fd[1]) {
-        LOG("Current output file should be: %s\n", io_redir[1]);
-        if(redir_fd[1] == 2) {
-            redir_fd[2] = open(io_redir[1], O_CREAT | O_WRONLY | O_APPEND, 0666);
-        } else {
-            redir_fd[2] = open(io_redir[1], O_CREAT | O_WRONLY, 0666);
-        }    
-
-        redir_fd[1] = dup2(redir_fd[2], STDOUT_FILENO);
-        close(redir_fd[2]);
-        LOG("New output fd is: %d\n", redir_fd[1]);
-    }
-
     return 0;
 }
 
+/**
+ * Checks if a pipe is within the tokenized command.
+ *
+ * @param sel_args array of String tokens from command
+ * @param argc amount of arguments in sel_args
+ */
 bool pipe_check(char *sel_args[], int argc) { 
     for(int ind = 0; ind < argc; ind++) {
         if(argc != 1 && strncmp("|", sel_args[ind], 1) == 0) {
@@ -328,47 +330,114 @@ bool pipe_check(char *sel_args[], int argc) {
     return false;
 }
 
-int exec_pipe(char *sel_args[], int argc,  int redir_fd[], int redir_ind[], char *io_redir[]) {
-    int start = 0;
-    int i = 0;
-    int child;
+/**
+ * Frees listed variables with allocated memory.
+ *
+ * @param
+ * @param
+ * @param
+ */
+//void free_vals(char **cmd_args, char *command, char **buf_args, char *buf_cmd, car *full_cmd) {
+//    free(cmd_args);
+//    free(command);
+//    free(buf_args);
+//    free(buf_cmd);
+//    free(full_cmd);
+//}
+
+/**
+ * Execute the inputted pipe command. The shell then checks if the command
+ * is a builtin function and if it is not, then the code proceeds to execute
+ * individual sections of the piped command. It first checks for file
+ * redirection within the command. After that has been handled, the command
+ * is finally executed.
+ *
+ * @param sel_args array of String tokens from command
+ * @param argc amount of arguments in sel_args
+ * @param redir_fd array of 2 file descriptors for current input and output
+ * @param redir_ind array of 2 indecies for locations of '<' and/or '>' chars
+ * @return 0 if no errors were thrown, else a corresponding error value
+ */
+int exec_pipe(char *sel_args[], int argc,  int redir_fd[]) {
+    int start = 0;  /* Tracks starting index for pipe command */
+    int i = 0;      /* Tracks last index of pipe command */
+    pid_t child;
     /* Pipe vars */
     int fds[2];
-    int stdin_fd;
-    int stdout_fd;
-
-    if(pipe(fds) == -1) { perror("pipe"); }
-    
+    int input_fd = STDIN_FILENO;
+    int stdin_fd = dup(STDIN_FILENO);   /* Holds STDIN_FILENO for input restoration */
+    int stdout_fd = dup(STDOUT_FILENO);  /* Holds STDOUT_FILENO for output restoration */
+ 
     while(start < argc) {
-        while(sel_args[i] != NULL) { i += 1; }
+        while(i < argc) {
+            if(strcmp(sel_args[i], "|") == 0) { break; }
+            i += 1;
+        }
+        sel_args[i] = NULL;
+        i += 1;
 
+        if(pipe(fds) == -1) { perror("pipe"); }
+        
         child = fork();
         if(child == -1) {
             perror("fork");
         } else if (child == 0) {
-            if(io_redir_check(sel_args, argc, redir_fd, redir_ind, io_redir)) { 
-                file_redir(redir_fd, io_redir);
-                //int nxt_null = next_null(sel_args, argc);
-                //if(nxt_null < 3) {
-                //    sel_args = sel_args + nxt_null + 1;
-                //}
+            file_redir(sel_args, argc, redir_fd);
+            if(redir_fd[0] == 0 && start != 0) {
+                dup2(input_fd, STDIN_FILENO);
+                close(input_fd);
             }
-            if(start == 0 || i == argc)
-            if(redir_fd[0][0] || redir_fd[1][0]) {
-                file_redir(redir_fd, io_redir);
+            close(fds[0]);
+
+            if(redir_fd[1] == 0) {
+                if(i != argc + 1) {
+                    dup2(fds[1], STDOUT_FILENO);
+                }
             }
-            execvp(sel_args[start], sel_args + (start * sizeof(char*)));
-        } else {
-            wait(&status);
-            return status;
+            close(fds[1]);
+            
+            if(execvp(sel_args[start], sel_args + start) == -1){
+                perror("exec");
+                exit(EXIT_FAILURE);
+            }
         }
-        start = i + 1;
+        if(input_fd != STDIN_FILENO) { close(input_fd); } 
+        input_fd = dup(fds[0]);
+        close(fds[0]);
+        close(fds[1]);
+        fds[0] = 0;
+        fds[1] = 0;
+        wait(&status);
+        start = i;
+        if(redir_fd[0]) {
+            close(redir_fd[0]);
+            dup2(stdin_fd, STDIN_FILENO);
+            close(stdin_fd);
+            redir_fd[0] = 0;
+        }
+        if(redir_fd[1]) {
+            close(redir_fd[1]);
+            dup2(stdout_fd, STDOUT_FILENO);
+            close(stdout_fd);
+            redir_fd[1] = 0;
+        }
     }
-    return 0;
+    close(stdin_fd);
+    close(stdout_fd);
+    close(input_fd);
+    return status;
 }
 
 /**
- * Attempts to execute the inputted command. The shell tokenizes the command, then checks if piping is to be executed. If it is, a special pipe handler function is executed. After checking, the shell then checks if the command is a builtin function and if it is not, then the code proceeds to check for file redirection within the command. After that has been handled, the command is finally executed
+ * Attempts to execute the inputted command. The shell tokenizes the command,
+ * then checks if piping is to be executed. If it is, a special pipe handler
+ * function is executed. After checking, the shell then checks if the command
+ * is a builtin function and if it is not, then the code proceeds to check for
+ * file redirection within the command. After that has been handled, the
+ * command is finally executed,
+ *
+ * @param command command string to be executed
+ * @return 0 if no errors were thrown, else a corresponding error value
  */
 int execute_cmd(char *command)
 {
@@ -388,9 +457,7 @@ int execute_cmd(char *command)
     char *full_cmd = strdup(command);
     int argc = 0;
     /* IO Redirection vars */
-    char *io_redir[2] = {0};
     int redir_fd[3] = {0};
-    int redir_ind[2] = {-1, -1};
     /* Pipe check */
     bool pipe_found = false;
 
@@ -435,9 +502,9 @@ int execute_cmd(char *command)
     LOG("DONE CHECKING ARGS %s\n", "");
     
 
-    /*if(pipe_found || pipe_check(sel_args, argc)) {
-        exec_pipe(sel_args, argc, redir_fd, io_redir);    
-    } else {*/
+    if(pipe_found || pipe_check(sel_args, argc)) {
+        exec_pipe(sel_args, argc, redir_fd);    
+    } else {
         pid_t child = fork();
         if (child == -1) {
             perror("fork");
@@ -450,17 +517,8 @@ int execute_cmd(char *command)
                 sel_args[argc - 1] = NULL;
             }
             
-            if(io_redir_check(sel_args, argc, redir_fd, redir_ind, io_redir)) { 
-                file_redir(redir_fd, io_redir);
-                //int nxt_null = next_null(sel_args, argc);
-                //if(nxt_null < 3) {
-                //    sel_args = sel_args + nxt_null + 1;
-                //}
-            }
-
-            LOG("Current val at sel_args[0]: %s\n", sel_args[0]);
-            //sel_args = io_redir_handle(sel_args, redir_fd, io_redir);
-            LOG("Current val at new sel_args[0]: %s\n", sel_args[0]); 
+            /* Checks for io redirection in command and applies if found */
+            file_redir(sel_args, argc, redir_fd);
 
             if(execvp(sel_args[0], sel_args) == -1) {
                 perror("exec");
@@ -469,6 +527,8 @@ int execute_cmd(char *command)
                 free(buf_args);
                 free(buf_cmd);
                 free(full_cmd);
+                if(redir_fd[0]) { close(redir_fd[0]); }
+                if(redir_fd[1]) { close(redir_fd[1]); }
                 exit(EXIT_FAILURE);
             }
         } else {
@@ -478,30 +538,30 @@ int execute_cmd(char *command)
             } else {
                 wait(&status);
             }
-
-            if(status != 0) {
-                bad_status();
-            } else {
-                good_status();
-            }
-
-            LOG("Child exited with status code: %d\n", status);
         }
-    //}
+    }
     
+    if(status != 0) {
+        bad_status();
+    } else {
+        good_status();
+    }
+    LOG("Child exited with status code: %d\n", status);
    
     free(cmd_args);
     free(command);
     free(buf_args);
     free(buf_cmd);
     free(full_cmd);
+    if(redir_fd[0]) { close(redir_fd[0]); }
+    if(redir_fd[1]) { close(redir_fd[1]); }
     LOG("Final frees executed%s\n", "");
     return EXIT_SUCCESS;
 }
 
-void terminal_input() {
+void terminal_input(char *command) {
     /* This is the dynamic user entry version of the project */
-    char *command;
+    //char *command;
 
     while(true) {
         LOG("New loop executed!%s\n", "");
@@ -517,9 +577,9 @@ void terminal_input() {
     LOG("Program run complete! Proceeding to exit terminal read...%s\n", "");
 }
 
-void script_input() {
+void script_input(char *command) {
     /* This is the script version of the project */
-    char *command;
+    //char *command;
     
     while(true) {
         command = dynamic_lineread(fileno(stdin));
@@ -547,11 +607,12 @@ int main(void)
 
     signal(SIGINT, sig_handler);
 
+    char *command = "";
     if(isatty(STDIN_FILENO)) {
-        terminal_input();
+        terminal_input(command);
     }
     else {
-        script_input();
+        script_input(command);
     }
 
     bg_destroy();
