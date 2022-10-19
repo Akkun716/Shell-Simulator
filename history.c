@@ -35,7 +35,7 @@ void hist_add(const char *cmd)
 
 void hist_remove(int command_number)
 {
-    LOG("Total num of ids in history is %d, id to remove is %d\n", hist_last_cnum(), command_number);
+    LOG("Total num of ids in history is %u, id to remove is %d\n", hist_last_cnum(), command_number);
     LOG("Command %d to be removed is %s\n", command_number, hist_search_cnum(command_number));
     LOG("Value at tail was %s\n", hist_search_cnum(hist_last_cnum()));
     int offset = (history->total_id_count) - (history->list_sz);

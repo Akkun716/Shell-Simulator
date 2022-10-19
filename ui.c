@@ -21,10 +21,10 @@ static int status = 0;
 static char *prefix = NULL;
 static char *home = NULL;
 static int home_size = 0;
-static int delim_offset = 0;
+//static int delim_offset = 0;
 static char **path_complete = NULL;
-static int path_size = 0;
-static int path_ind = 0;
+//static int path_size = 0;
+//static int path_ind = 0;
 
 static int readline_init(void);
 
@@ -55,7 +55,7 @@ char *prompt_line(void)
     const char *status_val = prompt_status() ? bad_str : good_str;
 
     char cmd_num[25];
-    snprintf(cmd_num, 25, "%d", prompt_cmd_num());
+    snprintf(cmd_num, 25, "%u", prompt_cmd_num());
 
     char *user = prompt_username();
     char *host = prompt_hostname();
@@ -149,7 +149,6 @@ unsigned int prompt_cmd_num(void)
     return cmd_num != -1
         ? cmd_num + 1
         : 1;
-    return 1;
 }
 
 /*int sig_handler(int signo)
@@ -190,10 +189,10 @@ int readline_init(void)
 
 int key_up(int count, int key)
 {
-    char *output_str = NULL;
+    const char *output_str = NULL;
 
     //LOG("Current value of val is %s\n", hist_track_val());
-    char *track_val = hist_track_val();
+    const char *track_val = hist_track_val();
     if(track_val == NULL) {
         track_val = "";
     }
@@ -257,11 +256,11 @@ int key_up(int count, int key)
 
 int key_down(int count, int key)
 {
-    char *output_str = NULL;
+    const char *output_str = NULL;
     /* Modify the command entry text: */
 
     //LOG("Current value of val is %s\n", hist_track_val());
-    char *track_val = hist_track_val();
+    const char *track_val = hist_track_val();
     if(track_val == NULL) {
         track_val = "";
     }

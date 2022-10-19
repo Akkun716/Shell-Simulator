@@ -7,6 +7,14 @@
 
 #include "util.h"
 
+/**
+ * Reads from a line of a file into a limited sized buffer.
+ *
+ * @param fd file to be read from
+ * @param buf buffer string to write into
+ * @param sz size of buffer string
+ * @return amount of characters actually read
+ */
 ssize_t lineread(int fd, char *buf, size_t sz) {
     size_t count_read = 0;
     while(count_read < sz) {
@@ -30,6 +38,12 @@ ssize_t lineread(int fd, char *buf, size_t sz) {
     return count_read;
 }
 
+/**
+ * Reads from a line of a file into a dynamically sized buffer.
+ *
+ * @param fd file to be read from
+ * @return resulting buffer string
+ */
 char *dynamic_lineread(int fd) {
 	size_t buf_sz = 128;
 	char* buf = NULL;
@@ -62,6 +76,13 @@ char *dynamic_lineread(int fd) {
 	return NULL;
 }
 
+/**
+ * Retrieves the next token from a string.
+ *
+ * @param str_ptr current pointer to string
+ * @param delim the delimiters to consider
+ * @return token generated
+ */
 char *next_token(char **str_ptr, const char *delim) {
     if (*str_ptr == NULL) {
         return NULL;
@@ -99,6 +120,15 @@ char *next_token(char **str_ptr, const char *delim) {
     return current_ptr;
 }
 
+/**
+ * Resizes array using addition or multiplication as specified.
+ *
+ * @param arr array to be resized
+ * @param arr_sz current size of the array
+ * @param oper int val representing operation for resizing
+ * @param val value to resize array by
+ * @return the updated array size
+ */
 int resize_arr(char **arr[], int arr_sz, int oper, int val) {
     switch(oper) {
 	case 0:
@@ -112,6 +142,15 @@ int resize_arr(char **arr[], int arr_sz, int oper, int val) {
     return arr_sz;
 }
 
+/** Tokenizes a string based on passed delimiters. Has extra functionality
+ * to check if the line is a C lang comment, and ignores the line.
+ *
+ * @param str entry string to be tokenized
+ * @param buf buffer array that will store all resulting tokens
+ * @param delim string containing delimiters to adhere to
+ * @param comments boolean if tokenizing should ignore C lang comment lines
+ * @return the total number of tokens from string (excluding NULL terminator)
+ */
 int tok_str(char *str, char **buf[], char *delim, bool comments) {
     char *str_iter = str;
     char *curr_tok = NULL;
@@ -133,30 +172,8 @@ int tok_str(char *str, char **buf[], char *delim, bool comments) {
 
     /* If the array is completely filled, add space for NULL terminator */
     if(i == arr_sz) {
-        //arr_sz += 1;
-        //*buf = (char **)realloc(*buf, arr_sz * sizeof(char *));
-        arr_sz = resize_arr(buf, arr_sz, 0, 1);
+        resize_arr(buf, arr_sz, 0, 1);
     }
     (*buf)[i] = NULL;
     return i;
-}
-
-char *str_to_lower(char *str) {
-	size_t stringlen = strlen(str);
-	char *copy = malloc(stringlen + 1);
-	for(int i = 0; i < stringlen; i++) {
-		*(copy + i) = tolower(*(str + i));
-	}
-	*(copy + stringlen) = '\0';
-	return copy;
-}
-
-char *str_to_upper(char *str) {
-	size_t stringlen = strlen(str);
-	char *copy = malloc(stringlen + 1);
-	for(int i = 0; i < stringlen; i++) {
-		*(copy + i) = toupper(*(str + i));
-	}
-	*(copy + stringlen) = '\0';
-	return copy;
 }

@@ -28,7 +28,7 @@ node_ptr get_node(struct LinkedHistory *list, int position)
         /* The list is empty */
         perror("[The list was empty]\n");
         return NULL;
-    } else if(position < 0 || (list->list_sz != 0 && position >= list->list_sz)) {
+    } else if(position < 0 || position >= list->list_sz) {
         /* The position entered is invalid */
         perror("Position input out of bounds");
         return NULL;
@@ -206,7 +206,7 @@ void remove_node(struct LinkedHistory *list, int position, bool id) {
 
         free(del_node->val);
         free(del_node);
-        LOG("Node found and removed! Current id total and list size is %d and %d\n", list->total_id_count, list->list_sz);
+        LOG("Node found and removed! Current id total and list size is %u and %u\n", list->total_id_count, list->list_sz);
     }
 
     return;
