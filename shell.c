@@ -331,21 +331,6 @@ bool pipe_check(char *sel_args[], int argc) {
 }
 
 /**
- * Frees listed variables with allocated memory.
- *
- * @param
- * @param
- * @param
- */
-//void free_vals(char **cmd_args, char *command, char **buf_args, char *buf_cmd, car *full_cmd) {
-//    free(cmd_args);
-//    free(command);
-//    free(buf_args);
-//    free(buf_cmd);
-//    free(full_cmd);
-//}
-
-/**
  * Execute the inputted pipe command. The shell then checks if the command
  * is a builtin function and if it is not, then the code proceeds to execute
  * individual sections of the piped command. It first checks for file
@@ -561,7 +546,6 @@ int execute_cmd(char *command)
 
 void terminal_input(char *command) {
     /* This is the dynamic user entry version of the project */
-    //char *command;
 
     while(true) {
         LOG("New loop executed!%s\n", "");
@@ -579,7 +563,6 @@ void terminal_input(char *command) {
 
 void script_input(char *command) {
     /* This is the script version of the project */
-    //char *command;
     
     while(true) {
         command = dynamic_lineread(fileno(stdin));

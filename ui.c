@@ -151,22 +151,10 @@ unsigned int prompt_cmd_num(void)
         : 1;
 }
 
-/*int sig_handler(int signo)
-{
-    switch(signo) {
-        case SIGINT:
-            printf("\n");
-            fflush(stdout);
-    }
-
-    return 0;
-}*/
-
 char *read_command(void)
 {
     char *prompt = NULL;
     char *command = NULL;
-    //int interrupt = signal(SIGINT, sig_handler);
 
     prompt = prompt_line();
     command = readline(prompt);
@@ -212,19 +200,12 @@ int key_up(int count, int key)
             hist_track_clear();
             LOG("prefix updated to: %s\n", prefix);
         }
-    } else {
-        //LOG("prefix was NOT updated %s\n", "");
     }
     
 
     if(prefix != NULL) {
         /* Checks if there is a valid prefix */
-        //LOG("Prefix search was executed!%s\n", "");
         output_str = hist_search_prefix(prefix, 0);
-        
-        /*while(output_str != NULL && strcmp(output_str, rl_line_buffer) == 0) {
-            output_str = hist_search_prefix(prefix, 0);
-        }*/
         
         if(output_str == NULL) {
             output_str = rl_line_buffer;
@@ -249,7 +230,6 @@ int key_up(int count, int key)
 
     /* Move the cursor to the end of the line: */
     rl_point = rl_end;
-    //rl_mark = rl_end;
 
     return 0;
 }
@@ -259,7 +239,6 @@ int key_down(int count, int key)
     const char *output_str = NULL;
     /* Modify the command entry text: */
 
-    //LOG("Current value of val is %s\n", hist_track_val());
     const char *track_val = hist_track_val();
     if(track_val == NULL) {
         track_val = "";
@@ -273,12 +252,11 @@ int key_down(int count, int key)
             LOG("prefix updated to: %s\n", prefix);
         }
     } else {
-        //LOG("prefix was NOT updated %s\n", "");
+        LOG("prefix was NOT updated %s\n", "");
     }
     
 
     if(prefix != NULL) {
-        //LOG("Prefix search was executed!%s\n", "");
         output_str = hist_search_prefix(prefix, 1);
         while(output_str != NULL && strcmp(output_str, rl_line_buffer) == 0) {
             output_str = hist_search_prefix(prefix, 1);
@@ -294,7 +272,6 @@ int key_down(int count, int key)
     rl_replace_line(output_str, 1);
     /* Move the cursor to the end of the line: */
     rl_point = rl_end;
-    //rl_mark = rl_end;
     return 0;
 }
 

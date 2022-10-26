@@ -1,6 +1,6 @@
-# Project 1: System Inspector
+# Project 2: Shell Simulator
 
-This is a shell implemented using the C language. This shell named `fish` (Frequently Inconsistant SHell), provides functionality similar to the `bash` shell. Typical shell operations: prompt user input, executes built-in and command functions that are available in the current directory and PATH environment variable, scripting 
+This is a shell implemented using the C language. This shell named `fish` (Frequently Inconsistant SHell), provides functionality similar to the `bash` shell. Typical shell operations: prompt user input, executes built-in and command functions that are available in the current directory and PATH environment variable, scripting. 
 ## Building
 
 To compile and run:
@@ -13,13 +13,8 @@ make
 ## Program Options
 
 ```bash
-$ ./some_prog -h
-Usage: ./some_prog [-z] [-d dir]
-
-Options:
-    * -d              Directory to load information from.
-    * -z              Enable super secret 'Z' mode
-```
+$ ./some_prog
+Usage: ./some_prog
 
 ## Included Files
 
